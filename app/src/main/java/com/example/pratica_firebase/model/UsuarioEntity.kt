@@ -8,7 +8,8 @@ data class UsuarioEntity(
     val id: Int = 0,
     val nombre: String = "",
     val genero: String = "",
-    val estado: String = ""
+    val estado: String = "",
+    val notificaciones: Boolean = false
 )
 
 

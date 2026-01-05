@@ -1,10 +1,14 @@
 package com.example.pratica_firebase
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,12 +17,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
@@ -29,6 +36,9 @@ import com.example.pratica_firebase.cloud.FirebaseService
 import com.example.pratica_firebase.model.UsuarioEntity
 import com.google.firebase.Firebase
 import com.google.firebase.firestore.firestore
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private const val TAG = "FirestorePratica"
 private val db = Firebase.firestore
@@ -56,6 +66,23 @@ fun MainScreen(modifier: Modifier = Modifier) {
     val genero = remember { mutableStateOf("") }
     val estado = remember { mutableStateOf("") }
     val notificaciones = remember { mutableStateOf(false) }
+    
+    // Estados para Firebase Storage
+    val archivoSeleccionado = remember { mutableStateOf<Uri?>(null) }
+    val urlArchivo = remember { mutableStateOf("") }
+    val subiendoArchivo = remember { mutableStateOf(false) }
+    val nombreArchivo = remember { mutableStateOf("") }
+    
+    // Launcher para seleccionar archivos
+    val seleccionarArchivoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            archivoSeleccionado.value = it
+            nombreArchivo.value = it.lastPathSegment ?: "archivo_${System.currentTimeMillis()}"
+            urlArchivo.value = ""
+        }
+    }
 
     Column(
         modifier = modifier.padding(16.dp),
@@ -83,6 +110,21 @@ fun MainScreen(modifier: Modifier = Modifier) {
             label = { Text("Estado") },
             modifier = Modifier.fillMaxWidth()
         )
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            Checkbox(
+                checked = notificaciones.value,
+                onCheckedChange = { notificaciones.value = it }
+            )
+            Text(
+                text = "Activar notificaciones",
+                modifier = Modifier.padding(start = 8.dp)
+            )
+        }
+        
         Button(
             onClick = {
                 // Validación simple
@@ -115,6 +157,107 @@ fun MainScreen(modifier: Modifier = Modifier) {
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(text = "Guardar usuario")
+        }
+        
+        // Separador visual
+        Text(
+            text = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            modifier = Modifier.padding(vertical = 8.dp)
+        )
+        
+        Text(
+            text = "Firebase Storage",
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
+        
+        // Botón para seleccionar archivo
+        Button(
+            onClick = {
+                seleccionarArchivoLauncher.launch("*/*")
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(text = "Seleccionar archivo")
+        }
+        
+        // Mostrar nombre del archivo seleccionado
+        if (nombreArchivo.value.isNotEmpty()) {
+            Text(
+                text = "Archivo: ${nombreArchivo.value}",
+                modifier = Modifier.padding(vertical = 4.dp)
+            )
+        }
+        
+        // Botón para subir archivo
+        if (archivoSeleccionado.value != null) {
+            Button(
+                onClick = {
+                    if (archivoSeleccionado.value != null) {
+                        subiendoArchivo.value = true
+                        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                        val path = "archivos/${timestamp}_${nombreArchivo.value}"
+                        
+                        FirebaseService.subirArchivo(
+                            fileUri = archivoSeleccionado.value!!,
+                            path = path,
+                            onSuccess = { url ->
+                                urlArchivo.value = url
+                                subiendoArchivo.value = false
+                                Toast.makeText(
+                                    context,
+                                    "Archivo subido correctamente",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            },
+                            onFailure = { error ->
+                                subiendoArchivo.value = false
+                                Toast.makeText(
+                                    context,
+                                    "Error al subir archivo: ${error.message}",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        )
+                    }
+                },
+                enabled = !subiendoArchivo.value,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (subiendoArchivo.value) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                        Text(text = "Subiendo...")
+                    }
+                } else {
+                    Text(text = "Subir archivo a Firebase Storage")
+                }
+            }
+        }
+        
+        // Mostrar URL del archivo subido
+        if (urlArchivo.value.isNotEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+            ) {
+                Text(
+                    text = "URL del archivo:",
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                OutlinedTextField(
+                    value = urlArchivo.value,
+                    onValueChange = {},
+                    readOnly = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("URL de descarga") }
+                )
+            }
         }
 
     }
